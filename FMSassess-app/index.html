@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PreK FMS Assessment System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js";
+    import { 
+      initializeFirestore, 
+      persistentLocalCache, 
+      persistentMultipleTabManager,
+      collection, 
+      addDoc, 
+      serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+
+    window.fmsDB = db;
+    window.fmsAddDoc = addDoc;
+    window.fmsCollection = collection;
+    window.fmsServerTimestamp = serverTimestamp;
+  </script>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-indigo-950 text-white px-4 py-3 flex justify-between items-center shadow sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <span class="text-xl">🏃</span>
+      <div>
+        <h1 class="text-base font-bold leading-tight">PreK FMS Tracker</h1>
+        <p id="userRoleBadge" class="text-xs text-indigo-300">Role: Not Signed In</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div id="netStatus" class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online
+      </div>
+      <button onclick="toggleInstructorModal()" class="text-xs bg-indigo-800 hover:bg-indigo-700 px-3 py-1.5 rounded-md font-semibold border border-indigo-600">
+        Instructor Portal
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto p-4 space-y-6">
+
+    <!-- SIGN-IN SCREEN -->
+    <section id="authSection" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+      <h2 class="text-base font-bold text-slate-900 border-b pb-2">Select Class Section & Teacher Candidate</h2>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Class Section</label>
+          <select id="loginSection" onchange="loadCandidateDropdown()" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 outline-none">
+            <option value="section_01">Section 01 (PreK Class A)</option>
+            <option value="section_02">Section 02 (PreK Class B)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Teacher Candidate</label>
+          <select id="loginCandidate" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 outline-none">
+            <!-- Populated via JS -->
+          </select>
+        </div>
+      </div>
+
+      <button onclick="signInTeacher()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm shadow">
+        Confirm & Start Assessing
+      </button>
+    </section>
+
+    <!-- TEACHER CANDIDATE ASSESSMENT APP -->
+    <section id="appSection" class="hidden space-y-6">
+      
+      <!-- Session Bar -->
+      <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 flex justify-between items-center text-xs">
+        <div>
+          <span class="font-bold text-indigo-950" id="currentTeacherDisplay">Teacher</span> 
+          <span class="text-indigo-600 mx-1">•</span> 
+          <span id="currentSectionDisplay" class="text-indigo-800">Section</span>
+        </div>
+        <button onclick="signOutTeacher()" class="text-indigo-600 hover:underline font-semibold">Change User</button>
+      </div>
+
+      <!-- Assessment Input Card -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">PreK Child</label>
+            <select id="childSelect" class="w-full px-3 py-2 border rounded-lg text-sm font-semibold outline-none bg-slate-50">
+              <!-- Populated based on Section -->
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Context / Setting</label>
+            <select id="contextSetting" class="w-full px-3 py-2 border rounded-lg text-sm outline-none">
+              <option value="Obstacle Course">Obstacle Course</option>
+              <option value="Movement Stations">Movement Stations</option>
+              <option value="Free Play / Exploration">Free Play / Exploration</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-500 mb-1">FMS Skill</label>
+          <select id="skillSelect" onchange="onSkillChange()" class="w-full px-3 py-2 border rounded-lg text-sm font-medium outline-none">
+            <optgroup label="Stability Skills">
+              <option value="Dynamic Balance">Dynamic Balance</option>
+              <option value="Static Balance">Static Balance</option>
+            </optgroup>
+            <optgroup label="Locomotor Skills">
+              <option value="Running">Running</option>
+              <option value="Leaping">Leaping</option>
+              <option value="Jumping">Jumping</option>
+              <option value="Sliding">Sliding</option>
+              <option value="Galloping">Galloping</option>
+              <option value="Hopping">Hopping</option>
+              <option value="Skipping">Skipping</option>
+            </optgroup>
+            <optgroup label="Manipulative Skills">
+              <option value="Underhand Rolling">Underhand Rolling</option>
+              <option value="Underhand Throwing">Underhand Throwing</option>
+              <option value="Overhand Throwing">Overhand Throwing</option>
+              <option value="Catching">Catching</option>
+              <option value="Kicking">Kicking</option>
+              <option value="Striking">Striking</option>
+              <option value="Hand Dribbling">Hand Dribbling</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <!-- Dynamic Textbook Observation Checklist -->
+        <div class="space-y-3 pt-2 border-t">
+          <div class="flex justify-between items-center">
+            <label class="block text-xs font-bold uppercase text-slate-700">Observation Checklist (From Textbook)</label>
+            <span class="text-[11px] text-slate-400">Describe what you observe</span>
+          </div>
+
+          <div id="checklistContainer" class="border border-slate-200 rounded-lg overflow-hidden text-xs">
+            <!-- Populated dynamically based on chosen skill -->
+          </div>
+        </div>
+
+        <!-- Stage Buttons -->
+        <div class="pt-2 border-t">
+          <label class="block text-xs font-bold uppercase text-slate-500 mb-2">Overall Developmental Stage</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" onclick="setStage('Initial')" id="stageBtn_Initial" class="stage-btn py-3 px-2 border-2 border-slate-200 rounded-lg text-xs font-bold hover:border-amber-400">
+              Initial
+              <span class="block text-[10px] font-normal text-slate-400 mt-1">Wide base / cautious</span>
+            </button>
+            <button type="button" onclick="setStage('Elementary')" id="stageBtn_Elementary" class="stage-btn py-3 px-2 border-2 border-slate-200 rounded-lg text-xs font-bold hover:border-amber-500">
+              Elementary
+              <span class="block text-[10px] font-normal text-slate-400 mt-1">Emerging rhythm</span>
+            </button>
+            <button type="button" onclick="setStage('Mature')" id="stageBtn_Mature" class="stage-btn py-3 px-2 border-2 border-slate-200 rounded-lg text-xs font-bold hover:border-emerald-500">
+              Mature
+              <span class="block text-[10px] font-normal text-slate-400 mt-1">Coordinated & fluid</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Guided Reflection & Action -->
+        <div class="space-y-3 pt-3 border-t">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Instructional Cue Selected</label>
+            <select id="cueSelect" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 outline-none">
+              <!-- Populated via JS -->
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Constraint Adjustment (Newell)</label>
+            <select id="constraintType" class="w-full px-3 py-2 border rounded-lg text-sm mb-2 outline-none">
+              <option value="Task">Task (modify equipment size, distance, target)</option>
+              <option value="Environment">Environment (lanes, space, height)</option>
+              <option value="Individual">Individual (scaffolding, demonstration)</option>
+            </select>
+            <textarea id="reflectionText" rows="2" placeholder="Next step plan: What will you do with the child next?" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+          </div>
+        </div>
+
+        <button onclick="saveAssessment()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold rounded-lg text-sm shadow">
+          Save Assessment (Offline Enabled)
+        </button>
+      </div>
+
+      <!-- Recent Evaluations -->
+      <div class="space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">My Recent Evaluations</h3>
+          <span id="pendingBadge" class="text-xs bg-slate-200 text-slate-700 font-semibold px-2 py-0.5 rounded-full">0 pending sync</span>
+        </div>
+        <div id="candidateSubmissionsList" class="space-y-2">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- INSTRUCTOR MODAL -->
+  <div id="instructorModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+      
+      <div class="p-4 bg-slate-900 text-white flex justify-between items-center rounded-t-2xl">
+        <div>
+          <h2 class="text-base font-bold">Instructor Oversight Dashboard</h2>
+          <p class="text-xs text-slate-400">Class section control & candidate submission tracking</p>
+        </div>
+        <button onclick="toggleInstructorModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+      </div>
+
+      <div class="p-6 space-y-6">
+
+        <div id="instructorGate" class="space-y-3">
+          <p class="text-xs font-semibold text-slate-600">Enter instructor passkey to manage rosters and see records:</p>
+          <div class="flex gap-2">
+            <input type="password" id="instructorPass" placeholder="Passkey (default: cortland321)" class="px-3 py-2 border rounded-lg text-sm flex-1 outline-none">
+            <button onclick="unlockInstructor()" class="px-4 py-2 bg-indigo-600 text-white font-bold text-sm rounded-lg hover:bg-indigo-700">Unlock</button>
+          </div>
+        </div>
+
+        <div id="instructorContent" class="hidden space-y-6">
+
+          <!-- Section Switcher -->
+          <div class="flex flex-wrap gap-2 border-b pb-4">
+            <button onclick="setInstructorFilter('all')" id="btnFilterAll" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-900 text-white">All Sections</button>
+            <button onclick="setInstructorFilter('section_01')" id="btnFilterS1" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">Section 01 (Class A)</button>
+            <button onclick="setInstructorFilter('section_02')" id="btnFilterS2" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600">Section 02 (Class B)</button>
+          </div>
+
+          <!-- Rosters -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Roster Management</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="space-y-2 bg-white p-3 rounded-lg border">
+                <label class="block text-xs font-semibold text-slate-600">Add Teacher Candidate</label>
+                <div class="flex gap-2">
+                  <select id="addTeacherSection" class="text-xs border rounded p-1.5 outline-none">
+                    <option value="section_01">Sec 01</option>
+                    <option value="section_02">Sec 02</option>
+                  </select>
+                  <input type="text" id="newTeacherName" placeholder="Candidate Name" class="text-xs border rounded p-1.5 flex-1 outline-none">
+                  <button onclick="addTeacherCandidate()" class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded hover:bg-emerald-700">Add</button>
+                </div>
+              </div>
+
+              <div class="space-y-2 bg-white p-3 rounded-lg border">
+                <label class="block text-xs font-semibold text-slate-600">Add PreK Student</label>
+                <div class="flex gap-2">
+                  <select id="addChildSection" class="text-xs border rounded p-1.5 outline-none">
+                    <option value="section_01">Class A (Sec 01)</option>
+                    <option value="section_02">Class B (Sec 02)</option>
+                  </select>
+                  <input type="text" id="newChildName" placeholder="Child Identifier" class="text-xs border rounded p-1.5 flex-1 outline-none">
+                  <button onclick="addChild()" class="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded hover:bg-emerald-700">Add</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submissions Table -->
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Fieldwork Assessment Feed</h3>
+              <span id="instructorFeedCount" class="text-xs text-slate-500 font-semibold">0 submissions</span>
+            </div>
+
+            <div class="overflow-x-auto border border-slate-200 rounded-lg">
+              <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-100 text-slate-700 font-bold border-b">
+                  <tr>
+                    <th class="p-2.5">Date / Time</th>
+                    <th class="p-2.5">Section</th>
+                    <th class="p-2.5">Candidate</th>
+                    <th class="p-2.5">PreK Child</th>
+                    <th class="p-2.5">Skill & Stage</th>
+                    <th class="p-2.5">Checklist Items Marked</th>
+                    <th class="p-2.5">Next Step Reflection</th>
+                    <th class="p-2.5">Sync</th>
+                  </tr>
+                </thead>
+                <tbody id="instructorSubmissionsTable" class="divide-y divide-slate-100">
+                  <!-- Rows populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Rosters
+    const defaultRosters = {
+      section_01: {
+        teachers: ["Sarah Jenkins", "Michael Torres", "Amanda Cole"],
+        children: ["Leo M.", "Emma S.", "Lucas R.", "Mia K.", "Noah B."]
+      },
+      section_02: {
+        teachers: ["David Kim", "Rachel Green", "James Wilson"],
+        children: ["Olivia P.", "Ethan T.", "Sophia H.", "Mason C.", "Ava W."]
+      }
+    };
+
+    // Textbook Checklists by Skill
+    const textbookChecklists = {
+      "Dynamic Balance": [
+        { category: "Stepping Pattern", items: ["Side stepping or follow-step along surface", "Alternate stepping pattern", "Pauses between steps"] },
+        { category: "Arm Use", items: ["Arms extended widely for balance", "Arms wave or flail when balance is lost", "Arms occasionally adjust for balance", "Arms relaxed or minimally used"] },
+        { category: "Visual Focus", items: ["Looks directly at feet", "Looks at beam or pathway", "Looks forward beyond beam"] },
+        { category: "Body Control", items: ["Frequent loss of balance", "Regains balance with large arm movements", "Maintains upright posture", "Movement appears smooth and controlled"] }
+      ],
+      "Static Balance": [
+        { category: "Base of Support", items: ["Balances on two feet", "Balances on one leg briefly", "Balances on one leg consistently"] },
+        { category: "Arm Use", items: ["Arms wave widely for balance", "Arms adjust occasionally", "Arms relaxed"] },
+        { category: "Visual Focus", items: ["Eyes focused downward", "Eyes focused forward"] },
+        { category: "Balance Control", items: ["Frequent loss of balance", "Maintains position for more than 3 seconds", "Maintains position comfortably"] }
+      ],
+      "Running": [
+        { category: "Arm Action", items: ["Arms held high or out to the sides", "Arms beginning to swing while running", "Arms move in opposition to legs"] },
+        { category: "Foot Contact", items: ["Flat-footed contact with the ground", "Beginning heel-toe contact", "Clear heel-toe contact"] },
+        { category: "Stride Pattern", items: ["Short, wide steps", "Stride length increasing", "Rhythmic stride with visible flight phase"] },
+        { category: "Body Control", items: ["Limited coordination of arms and legs", "Arms and legs beginning to coordinate", "Smooth, coordinated running pattern"] }
+      ],
+      "Leaping": [
+        { category: "Takeoff Pattern", items: ["Movement resembles a large running step", "Takeoff from one foot is visible", "Clear takeoff from one foot and landing on opposite foot"] },
+        { category: "Flight Phase", items: ["Little or no visible flight phase", "Short flight phase is visible", "Extended flight phase across space"] },
+        { category: "Arm Use", items: ["Arms held stiffly or used widely for balance", "Arms begin assisting the leap", "Arm-leg opposition during the leap"] },
+        { category: "Landing Control", items: ["Unstable landing with extra steps", "Landing becoming more controlled", "Controlled landing with balance recovery"] }
+      ],
+      "Jumping": [
+        { category: "Takeoff Preparation", items: ["Little or no knee bend before jumping", "Some knee bend before takeoff", "Clear bend of knees and hips before jumping"] },
+        { category: "Arm Action", items: ["Arms remain at sides, pull backward, or appear stiff", "Arms begin to assist during the jump", "Arms swing backward then forward/upward to assist takeoff"] },
+        { category: "Flight / Projection", items: ["Little lift or poorly directed projection", "Clearer lift with a brief flight phase", "Controlled flight appropriate to the height or distance task"] },
+        { category: "Landing Control", items: ["Hard landing, straight legs, or loss of balance", "Landing with some knee bend and improving balance", "Soft two-foot landing with knees bent and balance maintained"] }
+      ],
+      "Sliding": [
+        { category: "Lead Foot Control", items: ["Lead foot changes frequently", "Lead foot maintained for several steps", "Lead foot maintained consistently and can change lead sides"] },
+        { category: "Step-Together Pattern", items: ["Movement resembles side stepping or feet cross", "Beginning step-together/open-close pattern", "Clear rhythmic step-together pattern without crossing"] },
+        { category: "Body Orientation", items: ["Body turns toward direction of travel", "Body mostly faces forward while traveling sideways", "Body consistently maintains sideways travel with controlled orientation"] },
+        { category: "Rhythm / Body Control", items: ["Rhythm irregular; arms used mainly for balance", "Movement becoming continuous; arms begin assisting rhythm", "Movement appears smooth, light, rhythmic, and controlled"] }
+      ],
+      "Galloping": [
+        { category: "Lead Foot Control", items: ["Lead foot changes or switches frequently", "Lead foot maintained for several gallops", "Lead foot maintained consistently; can use either lead foot"] },
+        { category: "Step-Together Pattern", items: ["Movement resembles walking or running; feet may cross", "Beginning lead-follow pattern; trailing leg may be stiff", "Clear rhythmic step-together pattern with trailing foot behind"] },
+        { category: "Rhythm and Flow", items: ["Irregular rhythm or frequent breaks in pattern", "Movement becoming more continuous but rhythm uneven", "Smooth, steady, and rhythmic galloping"] },
+        { category: "Arm Action / Control", items: ["Arms used widely for balance", "Arms begin assisting rhythm and balance", "Bilateral arm action supports rhythm and propulsion"] }
+      ],
+      "Hopping": [
+        { category: "Balance on Support Leg", items: ["Difficulty maintaining balance on one foot", "Able to hop once or twice on one foot", "Able to hop repeatedly on the same foot"] },
+        { category: "Nonsupport Leg Position", items: ["Nonsupport leg held high or stiffly in front", "Nonsupport leg positioned beside or slightly behind support leg", "Nonsupport leg bends and swings rhythmically like pendulum"] },
+        { category: "Arm Action", items: ["Arms lifted, stiff, or wide for balance", "Arms begin assisting balance and rhythm", "Arm action coordinates with the hopping pattern"] },
+        { category: "Rhythm and Control", items: ["Single hop or frequent stops to regain balance", "Repeated hops with inconsistent rhythm", "Smooth, continuous, rhythmic hopping"] }
+      ],
+      "Skipping": [
+        { category: "Step-Hop Pattern", items: ["Walks/runs or difficulty producing step-hop", "Step-hop appears on one side or intermittently", "Clear step-hop pattern repeats consistently"] },
+        { category: "Alternating Sides", items: ["Uses one side only or stops before switching", "Beginning to alternate sides", "Alternates step-hop smoothly between feet"] },
+        { category: "Rhythm / Timing", items: ["Rhythm inconsistent or hesitant", "Rhythm becoming more continuous but uneven", "Consistent, light, repeating rhythm"] },
+        { category: "Arms / Flow", items: ["Arms held stiffly or widely; movement hesitant", "Arms assist movement; forward movement improves", "Arms coordinate naturally with legs; smooth and fluid"] }
+      ],
+      "Underhand Rolling": [
+        { category: "Arm Action", items: ["Ball is pushed, dropped, or tossed with little swing", "Visible backswing begins before release", "Clear pendulum backswing and forward rolling motion"] },
+        { category: "Feet / Weight Transfer", items: ["Feet remain stationary or in straddle stance", "Stride stance or same-side step appears", "Step with foot opposite rolling arm with forward weight transfer"] },
+        { category: "Ball Release", items: ["Ball is released high or may bounce", "Release point moves closer to floor", "Ball is released smoothly close to floor"] },
+        { category: "Directional Control", items: ["Ball travels with limited directional control", "Ball increasingly travels toward target", "Ball rolls consistently and accurately toward target"] }
+      ],
+      "Underhand Throwing": [
+        { category: "Arm Action", items: ["Object pushed/tossed with little backswing", "Visible backswing and forward arm swing emerge", "Clear smooth pendulum-like arm swing"] },
+        { category: "Feet / Weight Transfer", items: ["Feet remain stationary in straddle stance", "Stride stance or same-side (ipsilateral) step appears", "Opposite-foot (contralateral) step with forward weight transfer"] },
+        { category: "Release / Direction", items: ["Object released upward with inconsistent direction", "Object increasingly directed toward target", "Release is timed and controlled toward target"] },
+        { category: "Follow-Through", items: ["Little or no follow-through", "Arm begins continuing forward after release", "Arm follows through clearly toward target"] }
+      ],
+      "Overhand Throwing": [
+        { category: "Arm Action", items: ["Throwing motion comes mainly from elbow/shoulder", "Arm moves backward before throwing", "Clear high overhand throwing action"] },
+        { category: "Body Rotation", items: ["Little or no trunk rotation", "Blocked trunk rotation begins", "Segmented trunk rotation is evident"] },
+        { category: "Step / Weight Transfer", items: ["Feet remain stationary", "Same-side (ipsilateral) step appears", "Opposite-foot (contralateral) step with forward weight transfer"] },
+        { category: "Follow-Through", items: ["Little or no follow-through", "Arm/body continue forward after release", "Arm follows through across body"] }
+      ],
+      "Catching": [
+        { category: "Visual Tracking", items: ["Avoids or turns away from object", "Tracks object inconsistently", "Tracks object visually all the way into hands"] },
+        { category: "Arm / Hand Action", items: ["Arms held stiffly; chest trap used", "Arms reach out and trap against body", "Hands reach out to grasp object cleanly with fingers"] }
+      ],
+      "Kicking": [
+        { category: "Approach", items: ["Steps cautiously or pushes ball with toe", "Walks up with step toward ball", "Smooth approach with plant foot beside ball"] },
+        { category: "Leg Action", items: ["Pushes ball with straight leg", "Kicks with knee bend but little backswing", "Full backswing and follow-through through ball"] }
+      ],
+      "Striking": [
+        { category: "Body Orientation", items: ["Faces target directly; chop motion", "Begins turning side to target", "Side clearly oriented to target with hip/trunk rotation"] },
+        { category: "Arm Swing", items: ["Downward chop or push", "Horizontal swing emerging", "Full horizontal swing through object with follow-through"] }
+      ],
+      "Hand Dribbling": [
+        { category: "Hand Contact", items: ["Slaps ball with flat palm", "Pushes ball with finger pads intermittently", "Consistently pushes ball down with finger pads"] },
+        { category: "Height / Control", items: ["Ball bounces above chest or escapes", "Waist-height bounce emerging", "Ball controlled smoothly at waist level with eyes up"] }
+      ]
+    };
+
+    const textbookCues = {
+      "Dynamic Balance": ["Airplane arms", "Step and balance", "Stand tall", "Slow and steady", "Look ahead", "Walk smooth"],
+      "Static Balance": ["Freeze like a statue", "Quiet body", "Stand tall", "Strong base", "Hold it", "Find a spot to look at"],
+      "Running": ["Eyes forward", "Run tall", "Swing your arms", "Quick, light feet", "Run smooth"],
+      "Leaping": ["Big step", "Push and reach", "Over the river", "Land soft", "Keep moving"],
+      "Jumping": ["Swing, spring, ssssst", "Bend and jump", "Arms back, arms forward", "Reach and fly", "Land soft"],
+      "Sliding": ["Sideways", "Open, close", "Step together", "Same foot leads", "Light feet"],
+      "Galloping": ["One foot leads", "Step together", "Same leader", "Light feet", "Arms to the beat"],
+      "Hopping": ["One foot only", "Balance and hop", "Hop and hop", "Bounce light", "Swing your arms"],
+      "Skipping": ["Step-hop", "Step-hop, step-hop", "Hop then switch", "Light hops", "Skip to the beat"],
+      "Underhand Rolling": ["Tick-tock", "Roll it low", "Step and roll", "Eyes on target", "Point to your target"],
+      "Underhand Throwing": ["Tick-tock", "Throw it forward", "Step and throw", "Busy hand, busy foot", "Point to your target"],
+      "Overhand Throwing": ["Reach back", "Side to target", "Step and throw", "Make an L", "Throw over", "Follow through"],
+      "Catching": ["Eyes on ball", "Reach and grasp", "Soft hands", "Bring it in"],
+      "Kicking": ["Step beside ball", "Swing leg through", "Follow through to goal"],
+      "Striking": ["Watch the ball", "Turn your side", "Step and swing through"],
+      "Hand Dribbling": ["Finger pads", "Push down", "Waist high", "Eyes up"]
+    };
+
+    // State
+    let activeUser = JSON.parse(sessionStorage.getItem("fms_active_user") || "null");
+    let currentStage = "";
+    let instructorFilter = "all";
+
+    function getRosters() {
+      const data = localStorage.getItem("fms_rosters");
+      return data ? JSON.parse(data) : defaultRosters;
+    }
+
+    function saveRosters(rosters) {
+      localStorage.setItem("fms_rosters", JSON.stringify(rosters));
+      loadCandidateDropdown();
+      loadChildDropdown();
+    }
+
+    function getAssessments() {
+      return JSON.parse(localStorage.getItem("fms_assessment_records") || "[]");
+    }
+
+    function saveAssessments(records) {
+      localStorage.setItem("fms_assessment_records", JSON.stringify(records));
+      renderTeacherSubmissions();
+      renderInstructorFeed();
+    }
+
+    function loadCandidateDropdown() {
+      const sec = document.getElementById("loginSection").value;
+      const rosters = getRosters();
+      const candidates = rosters[sec]?.teachers || [];
+      const dropdown = document.getElementById("loginCandidate");
+      dropdown.innerHTML = candidates.map(c => `<option value="${c}">${c}</option>`).join("");
+    }
+
+    function loadChildDropdown() {
+      if (!activeUser) return;
+      const rosters = getRosters();
+      const children = rosters[activeUser.section]?.children || [];
+      const dropdown = document.getElementById("childSelect");
+      dropdown.innerHTML = children.map(c => `<option value="${c}">${c}</option>`).join("");
+    }
+
+    // Render observation checklist from textbook for selected skill
+    function renderChecklist() {
+      const skill = document.getElementById("skillSelect").value;
+      const categories = textbookChecklists[skill] || [];
+      const container = document.getElementById("checklistContainer");
+
+      if (categories.length === 0) {
+        container.innerHTML = `<p class="p-3 text-slate-400 italic">No checklist items defined for this skill.</p>`;
+        return;
+      }
+
+      container.innerHTML = categories.map((cat, catIdx) => `
+        <div class="border-b last:border-b-0 bg-white">
+          <div class="bg-slate-100 px-3 py-1.5 font-bold text-slate-700 flex justify-between items-center text-[11px] uppercase tracking-wide">
+            <span>${cat.category}</span>
+            <div class="flex gap-4 font-semibold text-slate-500 pr-1">
+              <span class="w-7 text-center">Yes</span>
+              <span class="w-14 text-center">Some</span>
+              <span class="w-7 text-center">No</span>
+            </div>
+          </div>
+          <div class="divide-y divide-slate-100">
+            ${cat.items.map((item, itemIdx) => `
+              <div class="px-3 py-1.5 flex justify-between items-center hover:bg-slate-50">
+                <span class="text-slate-800 pr-2">${item}</span>
+                <div class="flex gap-4 items-center pr-1 shrink-0">
+                  <label class="w-7 text-center cursor-pointer">
+                    <input type="radio" name="chk_${catIdx}_${itemIdx}" value="Yes" data-cat="${cat.category}" data-item="${item}" class="chk-input text-indigo-600 focus:ring-0">
+                  </label>
+                  <label class="w-14 text-center cursor-pointer">
+                    <input type="radio" name="chk_${catIdx}_${itemIdx}" value="Sometimes" data-cat="${cat.category}" data-item="${item}" class="chk-input text-indigo-600 focus:ring-0">
+                  </label>
+                  <label class="w-7 text-center cursor-pointer">
+                    <input type="radio" name="chk_${catIdx}_${itemIdx}" value="No" data-cat="${cat.category}" data-item="${item}" class="chk-input text-indigo-600 focus:ring-0">
+                  </label>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function refreshCues() {
+      const skill = document.getElementById("skillSelect").value;
+      const cues = textbookCues[skill] || ["Model movement", "Allow exploration"];
+      document.getElementById("cueSelect").innerHTML = cues.map(c => `<option value="${c}">${c}</option>`).join("");
+    }
+
+    window.onSkillChange = function() {
+      refreshCues();
+      renderChecklist();
+    };
+
+    window.setStage = function(stage) {
+      currentStage = stage;
+      document.querySelectorAll(".stage-btn").forEach(btn => {
+        btn.classList.remove("border-indigo-600", "bg-indigo-50", "text-indigo-900");
+      });
+      const active = document.getElementById("stageBtn_" + stage);
+      if (active) active.classList.add("border-indigo-600", "bg-indigo-50", "text-indigo-900");
+    };
+
+    window.signInTeacher = function() {
+      const section = document.getElementById("loginSection").value;
+      const teacher = document.getElementById("loginCandidate").value;
+
+      if (!teacher) {
+        alert("Please add/select a candidate name.");
+        return;
+      }
+
+      activeUser = { name: teacher, section: section };
+      sessionStorage.setItem("fms_active_user", JSON.stringify(activeUser));
+      initAppSession();
+    };
+
+    window.signOutTeacher = function() {
+      sessionStorage.removeItem("fms_active_user");
+      activeUser = null;
+      document.getElementById("appSection").classList.add("hidden");
+      document.getElementById("authSection").classList.remove("hidden");
+      document.getElementById("userRoleBadge").innerText = "Role: Not Signed In";
+    };
+
+    function initAppSession() {
+      if (!activeUser) return;
+      document.getElementById("authSection").classList.add("hidden");
+      document.getElementById("appSection").classList.remove("hidden");
+      document.getElementById("currentTeacherDisplay").innerText = activeUser.name;
+      document.getElementById("currentSectionDisplay").innerText = 
+        activeUser.section === "section_01" ? "Section 01 (PreK Class A)" : "Section 02 (PreK Class B)";
+      document.getElementById("userRoleBadge").innerText = `${activeUser.name} (${activeUser.section.replace('_', ' ').toUpperCase()})`;
+      loadChildDropdown();
+      refreshCues();
+      renderChecklist();
+      renderTeacherSubmissions();
+    }
+
+    // Save assessment with checklist data
+    window.saveAssessment = async function() {
+      const child = document.getElementById("childSelect").value;
+      const reflection = document.getElementById("reflectionText").value.trim();
+
+      if (!currentStage) {
+        alert("Please select an observed stage (Initial, Elementary, or Mature).");
+        return;
+      }
+
+      // Collect checklist results
+      const checklistAnswers = [];
+      document.querySelectorAll(".chk-input:checked").forEach(input => {
+        checklistAnswers.push({
+          category: input.getAttribute("data-cat"),
+          item: input.getAttribute("data-item"),
+          value: input.value
+        });
+      });
+
+      const newRecord = {
+        id: "eval_" + Date.now(),
+        timestamp: new Date().toISOString(),
+        section: activeUser.section,
+        teacher: activeUser.name,
+        child: child,
+        setting: document.getElementById("contextSetting").value,
+        skill: document.getElementById("skillSelect").value,
+        stage: currentStage,
+        cue: document.getElementById("cueSelect").value,
+        constraint: document.getElementById("constraintType").value,
+        reflection: reflection,
+        checklist: checklistAnswers,
+        synced: false
+      };
+
+      const records = getAssessments();
+      records.unshift(newRecord);
+      saveAssessments(records);
+
+      // Reset Form fields
+      document.getElementById("reflectionText").value = "";
+      setStage("");
+      renderChecklist();
+
+      syncCloud();
+    };
+
+    function renderTeacherSubmissions() {
+      if (!activeUser) return;
+      const records = getAssessments().filter(r => r.teacher === activeUser.name && r.section === activeUser.section);
+      const listEl = document.getElementById("candidateSubmissionsList");
+      const pendingCount = records.filter(r => !r.synced).length;
+      document.getElementById("pendingBadge").innerText = `${pendingCount} pending sync`;
+
+      if (records.length === 0) {
+        listEl.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No evaluations completed yet for this section.</p>`;
+        return;
+      }
+
+      listEl.innerHTML = records.slice(0, 5).map(r => `
+        <div class="p-3 bg-white border border-slate-200 rounded-lg shadow-sm space-y-1 text-xs">
+          <div class="flex justify-between items-center font-bold">
+            <span>${r.child} — <span class="text-indigo-600">${r.skill}</span></span>
+            <span class="px-2 py-0.5 rounded-full ${r.stage === 'Mature' ? 'bg-emerald-100 text-emerald-800' : r.stage === 'Elementary' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}">${r.stage}</span>
+          </div>
+          <p class="text-slate-600"><strong>Plan:</strong> Cue: "${r.cue}" | ${r.constraint} adjustment</p>
+          ${r.reflection ? `<p class="text-slate-500 italic">"${r.reflection}"</p>` : ''}
+          ${r.checklist && r.checklist.length > 0 ? `<p class="text-[11px] text-slate-400">Checklist: ${r.checklist.filter(c => c.value === 'Yes').length} Yes,${r.checklist.filter(c => c.value === 'Sometimes').length} Sometimes</p>` : ''}
+          <div class="flex justify-between items-center pt-1 text-[10px] text-slate-400">
+            <span>${new Date(r.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            <span class="${r.synced ? 'text-emerald-600 font-semibold' : 'text-amber-600 font-semibold'}">
+              ${r.synced ? '✓ Cloud Synced' : '● Stored Offline'}
+            </span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function syncCloud() {
+      if (!navigator.onLine || !window.fmsDB) return;
+      let records = getAssessments();
+      let updated = false;
+
+      for (let item of records) {
+        if (!item.synced) {
+          try {
+            await window.fmsAddDoc(window.fmsCollection(window.fmsDB, "assessments"), {
+              ...item,
+              cloudUploadedAt: window.fmsServerTimestamp()
+            });
+            item.synced = true;
+            updated = true;
+          } catch (e) {
+            console.warn("Offline sync pending connection:", e);
+          }
+        }
+      }
+      if (updated) saveAssessments(records);
+    }
+
+    window.addEventListener("online", () => {
+      document.getElementById("netStatus").innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online`;
+      syncCloud();
+    });
+    window.addEventListener("offline", () => {
+      document.getElementById("netStatus").innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Offline`;
+    });
+
+    // INSTRUCTOR DASHBOARD
+    window.toggleInstructorModal = function() {
+      document.getElementById("instructorModal").classList.toggle("hidden");
+    };
+
+    window.unlockInstructor = function() {
+      const pass = document.getElementById("instructorPass").value;
+      if (pass === "cortland321" || pass === "admin") {
+        document.getElementById("instructorGate").classList.add("hidden");
+        document.getElementById("instructorContent").classList.remove("hidden");
+        renderInstructorFeed();
+      } else {
+        alert("Incorrect passkey.");
+      }
+    };
+
+    window.setInstructorFilter = function(filter) {
+      instructorFilter = filter;
+      document.getElementById("btnFilterAll").className = filter === 'all' ? "px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-900 text-white" : "px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600";
+      document.getElementById("btnFilterS1").className = filter === 'section_01' ? "px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-900 text-white" : "px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600";
+      document.getElementById("btnFilterS2").className = filter === 'section_02' ? "px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-900 text-white" : "px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600";
+      renderInstructorFeed();
+    };
+
+    function renderInstructorFeed() {
+      const records = getAssessments();
+      const filtered = instructorFilter === "all" ? records : records.filter(r => r.section === instructorFilter);
+      document.getElementById("instructorFeedCount").innerText = `${filtered.length} total records`;
+      
+      const tbody = document.getElementById("instructorSubmissionsTable");
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-400 text-xs">No assessments match this criteria.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(r => {
+        const yesCount = (r.checklist || []).filter(c => c.value === 'Yes').length;
+        const someCount = (r.checklist || []).filter(c => c.value === 'Sometimes').length;
+        const checklistSummary = r.checklist && r.checklist.length > 0 ? `${yesCount} Yes, ${someCount} Sometimes` : 'None';
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2.5 whitespace-nowrap text-slate-500">${new Date(r.timestamp).toLocaleDateString()} ${new Date(r.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+            <td class="p-2.5 font-bold uppercase text-[10px] text-slate-600">${r.section.replace('_', ' ')}</td>
+            <td class="p-2.5 font-semibold text-slate-800">${r.teacher}</td>
+            <td class="p-2.5 font-medium text-slate-800">${r.child}</td>
+            <td class="p-2.5">
+              <span class="font-semibold text-indigo-700">${r.skill}</span>
+              <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${r.stage === 'Mature' ? 'bg-emerald-100 text-emerald-800' : r.stage === 'Elementary' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}">${r.stage}</span>
+            </td>
+            <td class="p-2.5 text-[11px] text-slate-600">${checklistSummary}</td>
+            <td class="p-2.5 max-w-xs truncate text-slate-600" title="${r.reflection || r.cue}">
+              <span class="font-semibold text-slate-800">Cue:</span> "${r.cue}" | <span class="italic text-slate-500">${r.reflection || 'No note'}</span>
+            </td>
+            <td class="p-2.5">
+              <span class="text-[10px] font-bold ${r.synced ? 'text-emerald-600' : 'text-amber-600'}">${r.synced ? 'Synced' : 'Offline'}</span>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    // Roster Management
+    window.addTeacherCandidate = function() {
+      const sec = document.getElementById("addTeacherSection").value;
+      const name = document.getElementById("newTeacherName").value.trim();
+      if (!name) return;
+      const rosters = getRosters();
+      if (!rosters[sec].teachers.includes(name)) {
+        rosters[sec].teachers.push(name);
+        saveRosters(rosters);
+        document.getElementById("newTeacherName").value = "";
+        alert(`Added ${name} to ${sec.replace('_', ' ').toUpperCase()}`);
+      }
+    };
+
+    window.addChild = function() {
+      const sec = document.getElementById("addChildSection").value;
+      const name = document.getElementById("newChildName").value.trim();
+      if (!name) return;
+      const rosters = getRosters();
+      if (!rosters[sec].children.includes(name)) {
+        rosters[sec].children.push(name);
+        saveRosters(rosters);
+        document.getElementById("newChildName").value = "";
+        alert(`Added ${name} to ${sec.replace('_', ' ').toUpperCase()}`);
+      }
+    };
+
+    // Initialize
+    loadCandidateDropdown();
+    if (activeUser) initAppSession();
+  </script>
+</body>
+</html>
